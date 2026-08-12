@@ -1,0 +1,138 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="theme-color" content="#0b1220" />
+  <title>Auditoria Fiscal SIEG</title>
+  <style>
+    :root{
+      --bg:#07101d;--card:#0e1a2b;--card2:#122238;--text:#eef5ff;
+      --muted:#9fb1c9;--line:#233752;--ok:#4ade80;--bad:#fb7185;
+      --warn:#fbbf24;--accent:#60a5fa;
+    }
+    *{box-sizing:border-box}
+    body{margin:0;background:linear-gradient(180deg,#07101d,#0a1423);color:var(--text);
+      font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;min-height:100vh}
+    .wrap{max-width:1050px;margin:0 auto;padding:34px 20px 60px}
+    h1{font-size:30px;margin:0 0 6px}.sub{color:var(--muted);margin:0 0 28px}
+    .grid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-bottom:18px}
+    .card{background:rgba(14,26,43,.95);border:1px solid var(--line);border-radius:16px;padding:18px}
+    .label{font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em}
+    .big{font-size:24px;font-weight:750;margin-top:7px}
+    .status-dot{display:inline-block;width:10px;height:10px;border-radius:50%;background:#64748b;margin-right:8px}
+    .actions{display:flex;gap:10px;flex-wrap:wrap;margin:14px 0}
+    button{border:0;border-radius:11px;padding:11px 15px;font-weight:700;cursor:pointer}
+    .primary{background:var(--accent);color:#06101e}.secondary{background:#1e3350;color:var(--text)}
+    .panel{background:rgba(14,26,43,.95);border:1px solid var(--line);border-radius:16px;padding:18px;margin-top:14px}
+    pre{white-space:pre-wrap;word-break:break-word;background:#07101d;border:1px solid var(--line);
+      border-radius:12px;padding:14px;color:#d7e7fb;max-height:420px;overflow:auto}
+    .ok{color:var(--ok)}.bad{color:var(--bad)}.warn{color:var(--warn)}
+    .hint{color:var(--muted);font-size:14px;line-height:1.5}
+    code{background:#081525;padding:2px 6px;border-radius:6px}
+    @media(max-width:760px){.grid{grid-template-columns:1fr}}
+  </style>
+</head>
+<body>
+  <main class="wrap">
+    <h1>Auditoria Fiscal SIEG</h1>
+    <p class="sub">Etapa 1 — validar a API e identificar as empresas/certificados disponíveis.</p>
+
+    <section class="grid">
+      <div class="card">
+        <div class="label">API SIEG</div>
+        <div class="big" id="apiStatus"><span class="status-dot"></span>Não testada</div>
+      </div>
+      <div class="card">
+        <div class="label">Certificados / empresas</div>
+        <div class="big" id="certCount">—</div>
+      </div>
+      <div class="card">
+        <div class="label">Próximo módulo</div>
+        <div class="big">NFC-e 65</div>
+      </div>
+    </section>
+
+    <div class="actions">
+      <button class="primary" onclick="testar()">Testar conexão</button>
+      <button class="secondary" onclick="listar()">Listar certificados</button>
+    </div>
+
+    <section class="panel">
+      <div class="label">Resultado</div>
+      <div id="msg" class="hint">Configure <code>SIEG_API_KEY</code> na Vercel e clique em “Testar conexão”.</div>
+      <pre id="output">Aguardando teste...</pre>
+    </section>
+
+    <section class="panel">
+      <div class="label">Objetivo da próxima etapa</div>
+      <p class="hint">
+        Após a API responder, este mesmo projeto será ligado ao download das NFC-e e eventos para classificar:
+        regular, cancelada, inutilizada, contingência e quebra de sequência.
+      </p>
+    </section>
+  </main>
+
+<script>
+  const output = document.getElementById("output");
+  const msg = document.getElementById("msg");
+  const apiStatus = document.getElementById("apiStatus");
+  const certCount = document.getElementById("certCount");
+
+  function setLoading(text){
+    msg.textContent = text;
+    output.textContent = "Consultando...";
+  }
+
+  function pretty(data){ return JSON.stringify(data, null, 2); }
+
+  function guessCount(data){
+    const candidates = [
+      data?.data, data?.data?.Data, data?.data?.data,
+      data?.data?.Certificados, data?.data?.certificados,
+      data?.data?.Lista, data?.data?.lista
+    ];
+    for(const c of candidates) if(Array.isArray(c)) return c.length;
+    return null;
+  }
+
+  async function testar(){
+    setLoading("Testando autenticação e acesso à SIEG...");
+    try{
+      const r = await fetch("/api/status");
+      const data = await r.json();
+      output.textContent = pretty(data);
+
+      if(r.ok && data.ok){
+        apiStatus.innerHTML = '<span class="status-dot" style="background:var(--ok)"></span><span class="ok">Conectada</span>';
+        msg.textContent = "Conexão realizada. A chave permaneceu protegida no servidor.";
+        const n = guessCount(data);
+        if(n !== null) certCount.textContent = n;
+      }else{
+        apiStatus.innerHTML = '<span class="status-dot" style="background:var(--bad)"></span><span class="bad">Erro</span>';
+        msg.textContent = "A SIEG respondeu com erro. Veja os detalhes abaixo.";
+      }
+    }catch(e){
+      apiStatus.innerHTML = '<span class="status-dot" style="background:var(--bad)"></span><span class="bad">Erro</span>';
+      msg.textContent = "Falha ao chamar a função da Vercel.";
+      output.textContent = String(e);
+    }
+  }
+
+  async function listar(){
+    setLoading("Buscando certificados/empresas...");
+    try{
+      const r = await fetch("/api/certificados");
+      const data = await r.json();
+      output.textContent = pretty(data);
+      const n = guessCount(data);
+      certCount.textContent = n ?? "Ver retorno";
+      msg.textContent = r.ok ? "Consulta concluída." : "Consulta retornou erro.";
+    }catch(e){
+      msg.textContent = "Falha ao consultar.";
+      output.textContent = String(e);
+    }
+  }
+</script>
+</body>
+</html>
